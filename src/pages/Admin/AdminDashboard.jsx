@@ -64,12 +64,37 @@ const AdminDashboard = () => {
     const file = e.target.files[0];
     if (!file) return;
 
+    // File size validation
     if (file.size > 50 * 1024 * 1024) {
       toast.error('File size too large. Maximum size is 50MB.', {
         position: "top-right",
         autoClose: 4000,
       });
       return;
+    }
+
+    // Image type validation
+    if (type === 'image') {
+      const validImageTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+      if (!validImageTypes.includes(file.type)) {
+        toast.error('Invalid image format. Please use JPEG, PNG, GIF, or WebP.', {
+          position: "top-right",
+          autoClose: 4000,
+        });
+        return;
+      }
+    }
+
+    // Video type validation
+    if (type === 'video') {
+      const validVideoTypes = ['video/mp4', 'video/webm', 'video/ogg'];
+      if (!validVideoTypes.includes(file.type)) {
+        toast.error('Invalid video format. Please use MP4, WebM, or OGG.', {
+          position: "top-right",
+          autoClose: 4000,
+        });
+        return;
+      }
     }
 
     const uploadToast = toast.loading(`Uploading ${type}...`, {
@@ -89,9 +114,15 @@ const AdminDashboard = () => {
       });
       
       if (response.data.success) {
+        const fileUrl = response.data.filePath || response.data.url;
+        
+        if (!fileUrl) {
+          throw new Error('No file URL returned from server');
+        }
+
         setFormData(prev => ({
           ...prev,
-          [type === 'image' ? 'image_url' : 'video_url']: response.data.filePath
+          [type === 'image' ? 'image_url' : 'video_url']: fileUrl
         }));
         
         toast.update(uploadToast, {
@@ -100,6 +131,11 @@ const AdminDashboard = () => {
           isLoading: false,
           autoClose: 3000,
         });
+
+        // Test if the uploaded file is accessible
+        if (type === 'image') {
+          testImageLoad(fileUrl);
+        }
       } else {
         throw new Error(response.data.error || 'Upload failed');
       }
@@ -118,9 +154,32 @@ const AdminDashboard = () => {
     }
   };
 
+  // Test if image loads successfully
+  const testImageLoad = (url) => {
+    const img = new Image();
+    img.onload = () => console.log('✅ Image loads successfully:', url);
+    img.onerror = () => {
+      console.log('❌ Image failed to load:', url);
+      toast.warning('Image uploaded but may not be accessible. Check the URL.', {
+        position: "top-right",
+        autoClose: 4000,
+      });
+    };
+    img.src = url;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    // Validate required fields
+    if (!formData.product_name || !formData.price_new || !formData.brand || !formData.category) {
+      toast.error('Please fill in all required fields!', {
+        position: "top-right",
+        autoClose: 3000,
+      });
+      return;
+    }
+
     const submitToast = toast.loading(
       editingProduct ? 'Updating product...' : 'Creating product...', 
       {
@@ -307,6 +366,16 @@ const AdminDashboard = () => {
     return date.toLocaleDateString();
   };
 
+  // Handle image error in product cards
+  const handleImageError = (e) => {
+    e.target.style.display = 'none';
+    const parent = e.target.parentElement;
+    const fallback = parent.querySelector('.image-fallback');
+    if (fallback) {
+      fallback.style.display = 'flex';
+    }
+  };
+
   return (
     <div className="admin-dashboard" style={{marginTop:'100px'}}>
       {/* Toast Container */}
@@ -314,7 +383,7 @@ const AdminDashboard = () => {
         position="top-right"
         autoClose={5000}
         hideProgressBar={false}
-        newestOnTop={true} // New toasts appear on top
+        newestOnTop={true}
         closeOnClick
         rtl={false}
         pauseOnFocusLoss
@@ -457,10 +526,23 @@ const AdminDashboard = () => {
                       accept="image/*"
                       onChange={(e) => handleFileUpload(e, 'image')}
                       className="file-input"
+                      disabled={uploading}
                     />
                     {formData.image_url && (
                       <div className="image-preview">
-                        <img src={formData.image_url} alt="Preview" />
+                        <img 
+                          src={formData.image_url} 
+                          alt="Preview" 
+                          onError={(e) => {
+                            e.target.style.display = 'none';
+                            const fallback = e.target.parentElement.querySelector('.preview-fallback');
+                            if (fallback) fallback.style.display = 'block';
+                          }}
+                        />
+                        <div className="preview-fallback" style={{display: 'none'}}>
+                          <div className="no-image">📷 Image not accessible</div>
+                          <small>URL: {formData.image_url}</small>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -479,6 +561,7 @@ const AdminDashboard = () => {
                       accept="video/*"
                       onChange={(e) => handleFileUpload(e, 'video')}
                       className="file-input"
+                      disabled={uploading}
                     />
                     {formData.video_url && (
                       <div className="video-preview">
@@ -582,7 +665,12 @@ const AdminDashboard = () => {
                           src={product.image_url} 
                           alt={product.product_name}
                           className="product-image"
+                          onError={handleImageError}
                         />
+                        <div className="image-fallback" style={{display: 'none'}}>
+                          <div className="no-image">📷 Image not available</div>
+                          <small>Failed to load: {product.image_url}</small>
+                        </div>
                         {product.video_url && (
                           <button 
                             className="btn btn-primary btn-small video-play-btn"
@@ -651,6 +739,7 @@ const AdminDashboard = () => {
             </div>
           )}
         </div>
+        <h1>hello 742</h1>
       </div>
     </div>
   );
